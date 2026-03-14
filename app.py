@@ -6,8 +6,8 @@ import google.generativeai as genai
 SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
 GEMINI_KEY = st.secrets["GEMINI_KEY"]
 
-# Setup Gemini with the specific model requested
 genai.configure(api_key=GEMINI_KEY)
+# Using Gemini 3 Flash Preview as requested
 model = genai.GenerativeModel('gemini-3-flash-preview') 
 
 def search_amazon(query):
@@ -29,7 +29,6 @@ def search_amazon(query):
 # --- 2. UI LAYOUT ---
 st.set_page_config(page_title="Amazon Elite Finder", layout="wide")
 st.title("🛒 Amazon Elite Product Finder")
-st.markdown("Strict Criteria: **4.5+ Stars** and **1,000+ Reviews**.")
 
 product_name = st.text_input("Product Name:", placeholder="e.g. Ergonomic Office Chair")
 
@@ -51,7 +50,6 @@ if st.button("Search & Analyze"):
             if error:
                 st.error(f"Search Error: {error}")
             elif results:
-                # --- FILTERING LOGIC ---
                 matches = []
                 for item in results:
                     rating = item.get("rating", 0)
@@ -69,7 +67,6 @@ if st.button("Search & Analyze"):
                             price_val = float(price_data.replace('$', '').replace(',', ''))
                         except: price_val = 0
                     
-                    # Apply criteria + optional price
                     price_pass = True
                     if min_p > 0 and price_val < min_p: price_pass = False
                     if max_p > 0 and price_val > max_p: price_pass = False
@@ -80,45 +77,40 @@ if st.button("Search & Analyze"):
                 if matches:
                     st.success(f"Successfully found {len(matches)} elite products!")
                     
-                    # --- 3. TOP 3 COMPARISON (SIDE-BY-SIDE) ---
-                    st.markdown("### 🏆 Top 3 Comparisons")
+                    # --- 3. BULK LINK GENERATION ---
+                    # We create a link using the ASINs (p_78 filter)
+                    asins = [item.get("asin") for item in matches if item.get("asin")]
+                    asin_query = "|".join(asins)
+                    bulk_link = f"https://www.amazon.com/s?k={product_name.replace(' ', '+')}&rh=p_78%3A{asin_query}"
+                    
+                    st.markdown("### 🔗 Your Curated Amazon Page")
+                    st.info("The button below takes you to an Amazon page showing ONLY the high-rated items we found.")
+                    st.link_button("🔥 Open All Elite Results on Amazon", bulk_link, type="primary")
+
+                    # --- 4. TOP 3 COMPARISON ---
+                    st.markdown("---")
+                    st.markdown("### 🏆 Top 3 Highlights")
                     top_matches = matches[:3]
                     cols = st.columns(len(top_matches))
                     
                     for idx, item in enumerate(top_matches):
                         with cols[idx]:
-                            st.markdown(f"**Match #{idx+1}**")
                             if item.get("thumbnail"):
                                 st.image(item["thumbnail"], width=150)
                             st.write(f"**{item.get('title', 'Product')[:60]}...**")
                             st.write(f"⭐ {item.get('rating')} | 💬 {item.get('reviews')}")
-                            st.link_button(f"Listing #{idx+1}", item.get('link', '#'))
 
-                    # --- 4. THE FULL LISTING CATALOG ---
-                    st.markdown("---")
-                    st.markdown(f"### 📋 Full Catalog ({len(matches)} items)")
-                    st.write("Browse all listings that met your quality requirements:")
-                    
-                    # Displaying all links in a list for the user
-                    for i, item in enumerate(matches):
-                        with st.expander(f"Item {i+1}: {item.get('title', 'Product')[:80]}..."):
-                            st.write(f"**Rating:** {item.get('rating')} Stars")
-                            st.write(f"**Reviews:** {item.get('reviews')}")
-                            st.link_button("Go to Amazon Listing", item.get('link', '#'))
-
-                    # --- 5. AI ANALYST (USING GEMINI-3-FLASH-PREVIEW) ---
+                    # --- 5. AI ANALYST ---
                     st.markdown("---")
                     with st.spinner("AI Analyst generating verdict..."):
                         try:
                             best = matches[0]
                             prompt = f"Analyze why a {product_name} with {best['rating']} stars and {best['reviews']} reviews is considered elite quality. Limit to two sentences."
-                            
                             response = model.generate_content(prompt)
                             if response.text:
                                 st.info(f"**AI Analyst Verdict (Gemini 3):**\n\n{response.text}")
                         except Exception as e:
                             st.error(f"AI Service Note: {str(e)}")
-                            st.info("The links above are verified. The AI model ID might be restricted in your region.")
                 else:
                     st.error("No items found meeting the 4.5+ star and 1,000+ review criteria.")
             else:
