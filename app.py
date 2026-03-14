@@ -6,9 +6,9 @@ import google.generativeai as genai
 SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
 GEMINI_KEY = st.secrets["GEMINI_KEY"]
 
-# Setup Gemini 3
+# Setup Gemini
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-3-flash-preview')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 def search_amazon(query):
     params = {
@@ -31,10 +31,8 @@ st.set_page_config(page_title="Amazon Elite Finder", layout="wide")
 st.title("🛒 Amazon Quality Finder & Comparator")
 st.markdown("Find products with **4.5+ Stars** and **1,000+ Reviews**.")
 
-# Input Section
 product_name = st.text_input("What product are you looking for?", placeholder="e.g. Mechanical Keyboard")
 
-# Price Range Section (Optional)
 st.markdown("### Price Filters (Optional)")
 p_col1, p_col2 = st.columns(2)
 with p_col1:
@@ -52,21 +50,24 @@ if st.button("Search & Compare Top Products"):
             if error:
                 st.error(f"Search Error: {error}")
             elif results:
-                # Filtering Logic
                 matches = []
                 for item in results:
-                    # Core Criteria
                     rating = item.get("rating", 0)
                     reviews = item.get("reviews", 0)
                     
-                    # Optional Price Criteria
-                    # Extracting price value safely from SerpApi structure
-                    price_data = item.get("price", {})
+                    # Safe Price Extraction for Filtering
+                    price_data = item.get("price")
                     price_val = 0
                     if isinstance(price_data, dict):
                         price_val = price_data.get("value", 0)
                     elif isinstance(price_data, (int, float)):
                         price_val = price_data
+                    elif isinstance(price_data, str):
+                        # Attempt to extract number from string like "$25.00"
+                        try:
+                            price_val = float(price_data.replace('$', '').replace(',', ''))
+                        except:
+                            price_val = 0
                     
                     price_pass = True
                     if min_p > 0 and price_val < min_p:
@@ -78,44 +79,46 @@ if st.button("Search & Compare Top Products"):
                         matches.append(item)
 
                 if matches:
-                    st.success(f"Found {len(matches)} products meeting your elite criteria!")
-                    
-                    # Limit to Top 3 for Comparison Mode
+                    st.success(f"Found {len(matches)} products meeting your criteria!")
                     top_matches = matches[:3]
                     
-                    # --- 3. COMPANION MODE (SIDE-BY-SIDE) ---
+                    # --- 3. COMPANION MODE ---
                     cols = st.columns(len(top_matches))
-                    
                     for idx, item in enumerate(top_matches):
                         with cols[idx]:
                             st.markdown(f"#### Match #{idx+1}")
                             if item.get("thumbnail"):
                                 st.image(item["thumbnail"], use_container_width=True)
-                            st.write(f"**{item.get('title', 'Amazon Product')[:60]}...**")
+                            
+                            st.write(f"**{item.get('title', 'Product')[:60]}...**")
                             st.write(f"⭐ {item.get('rating')} | 💬 {item.get('reviews')} reviews")
-                            if item.get("price"):
-                                st.write(f"💰 **{item['price'].get('raw', 'N/A')}**")
+                            
+                            # FIX: Safe Price Display (Handles string vs dictionary)
+                            price_info = item.get("price")
+                            if price_info:
+                                if isinstance(price_info, dict):
+                                    display_price = price_info.get("raw", "N/A")
+                                else:
+                                    display_price = str(price_info) # Use the string directly
+                                st.write(f"💰 **{display_price}**")
+                            
                             st.link_button(f"Buy Product {idx+1}", item.get('link', '#'))
 
-                    # --- 4. AI ANALYST OPINION ---
+                    # --- 4. AI ANALYST ---
                     st.markdown("---")
-                    with st.spinner("AI Analyst generating expert comparison..."):
+                    with st.spinner("Generating AI Expert Verdict..."):
                         try:
-                            # Contextual prompt for top match
                             best = top_matches[0]
                             prompt = (f"Act as a professional shopping consultant. You found several items for '{product_name}'. "
-                                     f"The top one has {best['rating']} stars and {best['reviews']} reviews. "
+                                     f"The top match has {best['rating']} stars and {best['reviews']} reviews. "
                                      f"Give a punchy, 3-sentence summary of why this specific group of products "
-                                     f"represents the highest tier of reliability on Amazon.")
-                            
+                                     f"is highly reliable.")
                             opinion = model.generate_content(prompt)
                             if opinion and opinion.text:
                                 st.info(f"**AI Expert Verdict:**\n\n{opinion.text}")
-                            else:
-                                st.warning("AI opinion temporarily unavailable. Please refer to stats above.")
                         except Exception as e:
-                            st.error(f"AI Error: {str(e)}")
+                            st.warning("AI opinion temporarily unavailable.")
                 else:
-                    st.error("No items found meeting all criteria (4.5+ stars, 1,000+ reviews, and your price range).")
+                    st.error("No items found meeting all criteria (4.5+ stars, 1,000+ reviews).")
             else:
                 st.info("No results returned. Try a different search term.")
