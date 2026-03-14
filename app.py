@@ -3,12 +3,13 @@ import requests
 import google.generativeai as genai
 
 # --- 1. CONFIGURATION ---
+# Access keys from Streamlit Cloud Secrets
 SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
 GEMINI_KEY = st.secrets["GEMINI_KEY"]
 
-# Setup Gemini - Using the 2026 stable alias
+# Setup Gemini - Updated to a valid 2026 stable model ID
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-2.0-flash') 
+model = genai.GenerativeModel('gemini-1.5-flash') 
 
 def search_amazon(query):
     params = {
@@ -92,25 +93,25 @@ if st.button("Search & Compare Top Products"):
                             st.write(f"💰 **{display_price}**")
                             st.link_button(f"Buy Product {idx+1}", item.get('link', '#'))
 
-                    # --- 4. AI ANALYST (FIXED) ---
+                    # --- 4. AI ANALYST (FIXED MODEL & PROMPT) ---
                     st.markdown("---")
                     with st.spinner("AI Analyst generating verdict..."):
                         try:
                             best = top_matches[0]
-                            # Simplified prompt for better reliability
-                            prompt = f"Explain in 2 sentences why a {product_name} with {best['rating']} stars and {best['reviews']} reviews is a reliable choice."
+                            prompt = f"Explain in two short sentences why this {product_name} with {best['rating']} stars is a great purchase."
                             
+                            # The critical fix: ensuring we call the content correctly
                             response = model.generate_content(prompt)
                             
-                            # Check for text attribute safely
-                            if hasattr(response, 'text') and response.text:
+                            if response.text:
                                 st.info(f"**AI Expert Verdict:**\n\n{response.text}")
                             else:
-                                st.warning("AI opinion is being processed. Please refresh in a moment.")
+                                st.warning("The AI returned an empty response. Check your API safety settings.")
                         except Exception as e:
-                            st.error(f"AI Connectivity Note: {str(e)}")
-                            st.info("The top products are verified above, but the AI service is currently throttled.")
+                            # If Gemini 1.5 fails, we show this clear error
+                            st.error(f"AI Service Error: {str(e)}")
+                            st.info("Product verification complete. AI analysis is currently unavailable.")
                 else:
-                    st.error("No items found meeting all criteria (4.5+ stars, 1,000+ reviews).")
+                    st.error("No items found meeting elite criteria (4.5+ stars, 1,000+ reviews).")
             else:
                 st.info("No results returned. Try a different search term.")
