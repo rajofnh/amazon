@@ -6,9 +6,9 @@ import google.generativeai as genai
 SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
 GEMINI_KEY = st.secrets["GEMINI_KEY"]
 
-# Setup Gemini
+# Setup Gemini - Using the 2026 stable alias
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-2.0-flash') 
 
 def search_amazon(query):
     params = {
@@ -29,7 +29,6 @@ def search_amazon(query):
 # --- 2. UI LAYOUT ---
 st.set_page_config(page_title="Amazon Elite Finder", layout="wide")
 st.title("🛒 Amazon Quality Finder & Comparator")
-st.markdown("Find products with **4.5+ Stars** and **1,000+ Reviews**.")
 
 product_name = st.text_input("What product are you looking for?", placeholder="e.g. Mechanical Keyboard")
 
@@ -55,7 +54,7 @@ if st.button("Search & Compare Top Products"):
                     rating = item.get("rating", 0)
                     reviews = item.get("reviews", 0)
                     
-                    # Safe Price Extraction for Filtering
+                    # Safe Price Extraction
                     price_data = item.get("price")
                     price_val = 0
                     if isinstance(price_data, dict):
@@ -63,23 +62,19 @@ if st.button("Search & Compare Top Products"):
                     elif isinstance(price_data, (int, float)):
                         price_val = price_data
                     elif isinstance(price_data, str):
-                        # Attempt to extract number from string like "$25.00"
                         try:
                             price_val = float(price_data.replace('$', '').replace(',', ''))
-                        except:
-                            price_val = 0
+                        except: price_val = 0
                     
                     price_pass = True
-                    if min_p > 0 and price_val < min_p:
-                        price_pass = False
-                    if max_p > 0 and price_val > max_p:
-                        price_pass = False
+                    if min_p > 0 and price_val < min_p: price_pass = False
+                    if max_p > 0 and price_val > max_p: price_pass = False
                         
                     if rating >= 4.5 and reviews >= 1000 and price_pass:
                         matches.append(item)
 
                 if matches:
-                    st.success(f"Found {len(matches)} products meeting your criteria!")
+                    st.success(f"Found {len(matches)} elite products!")
                     top_matches = matches[:3]
                     
                     # --- 3. COMPANION MODE ---
@@ -89,35 +84,32 @@ if st.button("Search & Compare Top Products"):
                             st.markdown(f"#### Match #{idx+1}")
                             if item.get("thumbnail"):
                                 st.image(item["thumbnail"], use_container_width=True)
-                            
                             st.write(f"**{item.get('title', 'Product')[:60]}...**")
                             st.write(f"⭐ {item.get('rating')} | 💬 {item.get('reviews')} reviews")
                             
-                            # FIX: Safe Price Display (Handles string vs dictionary)
                             price_info = item.get("price")
-                            if price_info:
-                                if isinstance(price_info, dict):
-                                    display_price = price_info.get("raw", "N/A")
-                                else:
-                                    display_price = str(price_info) # Use the string directly
-                                st.write(f"💰 **{display_price}**")
-                            
+                            display_price = price_info.get("raw", "N/A") if isinstance(price_info, dict) else str(price_info)
+                            st.write(f"💰 **{display_price}**")
                             st.link_button(f"Buy Product {idx+1}", item.get('link', '#'))
 
-                    # --- 4. AI ANALYST ---
+                    # --- 4. AI ANALYST (FIXED) ---
                     st.markdown("---")
-                    with st.spinner("Generating AI Expert Verdict..."):
+                    with st.spinner("AI Analyst generating verdict..."):
                         try:
                             best = top_matches[0]
-                            prompt = (f"Act as a professional shopping consultant. You found several items for '{product_name}'. "
-                                     f"The top match has {best['rating']} stars and {best['reviews']} reviews. "
-                                     f"Give a punchy, 3-sentence summary of why this specific group of products "
-                                     f"is highly reliable.")
-                            opinion = model.generate_content(prompt)
-                            if opinion and opinion.text:
-                                st.info(f"**AI Expert Verdict:**\n\n{opinion.text}")
+                            # Simplified prompt for better reliability
+                            prompt = f"Explain in 2 sentences why a {product_name} with {best['rating']} stars and {best['reviews']} reviews is a reliable choice."
+                            
+                            response = model.generate_content(prompt)
+                            
+                            # Check for text attribute safely
+                            if hasattr(response, 'text') and response.text:
+                                st.info(f"**AI Expert Verdict:**\n\n{response.text}")
+                            else:
+                                st.warning("AI opinion is being processed. Please refresh in a moment.")
                         except Exception as e:
-                            st.warning("AI opinion temporarily unavailable.")
+                            st.error(f"AI Connectivity Note: {str(e)}")
+                            st.info("The top products are verified above, but the AI service is currently throttled.")
                 else:
                     st.error("No items found meeting all criteria (4.5+ stars, 1,000+ reviews).")
             else:
