@@ -3,18 +3,19 @@ import requests
 import google.generativeai as genai
 
 # --- 1. CONFIGURATION ---
+# Access keys from Streamlit Cloud Secrets
 SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
 GEMINI_KEY = st.secrets["GEMINI_KEY"]
 
+# Setup Gemini
 genai.configure(api_key=GEMINI_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 def search_amazon(query):
-    # SerpApi's Amazon engine can be sensitive to parameters.
-    # We use 'q' for the search term and 'amazon_domain' to be specific.
+    # FIXED: Amazon engine requires 'k' for the keyword, not 'q'
     params = {
         "engine": "amazon",
-        "q": query,
+        "k": query, # Correct parameter for Amazon engine
         "amazon_domain": "amazon.com",
         "api_key": SERPAPI_KEY
     }
@@ -22,33 +23,37 @@ def search_amazon(query):
         response = requests.get("https://serpapi.com/search", params=params)
         data = response.json()
         
-        # DEBUG: Check if SerpApi returned an error (like 'out of credits')
         if "error" in data:
             st.error(f"SerpApi Error: {data['error']}")
             return []
             
         return data.get("organic_results", [])
     except Exception as e:
-        st.error(f"Connection Error: {e}")
+        st.error(f"Network Error: {e}")
         return []
 
 # --- 2. UI LAYOUT ---
-st.title("🛒 High-Rating Amazon Finder")
+st.set_page_config(page_title="Amazon High-Rating Finder", layout="wide")
+st.title("🛒 Amazon Quality Finder")
 st.markdown("---")
 
-product_name = st.text_input("Enter product name (e.g., 'wireless earbuds'):")
+# Sidebar for Debugging
+with st.sidebar:
+    show_raw = st.checkbox("Show Raw Search Data (Debug)")
 
-if st.button("Find Best Listing"):
+product_name = st.text_input("What product are you looking for?", placeholder="e.g. noise cancelling headphones")
+
+if st.button("Search & Analyze"):
     if not product_name:
         st.warning("Please enter a product name.")
     else:
-        with st.spinner("Searching Amazon..."):
+        with st.spinner("Talking to Amazon..."):
             results = search_amazon(product_name)
             
-            # DEBUG: Show total results found before filtering
-            st.write(f"Total Amazon results analyzed: {len(results)}")
-            
-            # Filtering logic: Rating > 4.5 and Reviews >= 1000
+            if show_raw:
+                st.write("### Raw Data from API", results)
+
+            # Filtering: Rating > 4.5 and Reviews >= 1000
             matches = [
                 item for item in results 
                 if item.get("rating", 0) > 4.5 and item.get("reviews", 0) >= 1000
@@ -56,25 +61,27 @@ if st.button("Find Best Listing"):
 
             if matches:
                 best_item = matches[0]
-                st.success(f"Found a Match: {best_item.get('title')}")
+                st.success(f"Top Match Found!")
                 
                 col1, col2 = st.columns([1, 2])
                 with col1:
                     if best_item.get("thumbnail"):
                         st.image(best_item["thumbnail"])
                 with col2:
+                    st.subheader(best_item.get("title"))
                     st.write(f"⭐ **Rating:** {best_item.get('rating')}")
                     st.write(f"💬 **Reviews:** {best_item.get('reviews')}")
-                    st.link_button("View on Amazon", best_item.get('link', '#'))
+                    st.link_button("View Listing on Amazon", best_item.get('link', '#'))
                 
-                # AI Analysis
+                # --- 3. AI AGENT ---
+                st.markdown("---")
                 try:
-                    prompt = f"Explain why this {product_name} is a high-quality choice."
+                    prompt = f"As a shopping expert, explain why this {product_name} is a smart buy based on {best_item['rating']} stars and {best_item['reviews']} reviews."
                     opinion = model.generate_content(prompt)
-                    st.info(f"**AI Analyst:** {opinion.text}")
-                except Exception as ai_err:
-                    st.warning("AI opinion unavailable, but product data is shown above.")
+                    st.info(f"**AI Analyst Opinion:**\n\n{opinion.text}")
+                except Exception as e:
+                    st.warning("AI opinion unavailable, but data is shown above.")
             else:
-                st.error("No items matched the 4.5+ star and 1,000+ review criteria.")
-                if len(results) > 0:
-                    st.info("Found results, but none were high enough quality. Try a more popular product name.")
+                st.error("No items found with 4.5+ stars and 1,000+ reviews.")
+                if results:
+                    st.info(f"Found {len(results)} items, but none met your high-quality filters.")
