@@ -3,13 +3,12 @@ import requests
 import google.generativeai as genai
 
 # --- 1. CONFIGURATION ---
-# Access keys from Streamlit Cloud Secrets
 SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
 GEMINI_KEY = st.secrets["GEMINI_KEY"]
 
-# Setup Gemini - Updated to a valid 2026 stable model ID
+# Setup Gemini - Updated to the current Gemini 3 model ID
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash') 
+model = genai.GenerativeModel('gemini-3-flash-preview') 
 
 def search_amazon(query):
     params = {
@@ -67,6 +66,7 @@ if st.button("Search & Compare Top Products"):
                             price_val = float(price_data.replace('$', '').replace(',', ''))
                         except: price_val = 0
                     
+                    # Price filter logic (effective only if values > 0)
                     price_pass = True
                     if min_p > 0 and price_val < min_p: price_pass = False
                     if max_p > 0 and price_val > max_p: price_pass = False
@@ -78,7 +78,7 @@ if st.button("Search & Compare Top Products"):
                     st.success(f"Found {len(matches)} elite products!")
                     top_matches = matches[:3]
                     
-                    # --- 3. COMPANION MODE ---
+                    # --- 3. COMPANION MODE (Side-by-Side) ---
                     cols = st.columns(len(top_matches))
                     for idx, item in enumerate(top_matches):
                         with cols[idx]:
@@ -93,24 +93,21 @@ if st.button("Search & Compare Top Products"):
                             st.write(f"💰 **{display_price}**")
                             st.link_button(f"Buy Product {idx+1}", item.get('link', '#'))
 
-                    # --- 4. AI ANALYST (FIXED MODEL & PROMPT) ---
+                    # --- 4. AI ANALYST ---
                     st.markdown("---")
                     with st.spinner("AI Analyst generating verdict..."):
                         try:
                             best = top_matches[0]
                             prompt = f"Explain in two short sentences why this {product_name} with {best['rating']} stars is a great purchase."
-                            
-                            # The critical fix: ensuring we call the content correctly
                             response = model.generate_content(prompt)
                             
-                            if response.text:
+                            if hasattr(response, 'text') and response.text:
                                 st.info(f"**AI Expert Verdict:**\n\n{response.text}")
                             else:
-                                st.warning("The AI returned an empty response. Check your API safety settings.")
+                                st.warning("AI opinion is unavailable for this specific search.")
                         except Exception as e:
-                            # If Gemini 1.5 fails, we show this clear error
-                            st.error(f"AI Service Error: {str(e)}")
-                            st.info("Product verification complete. AI analysis is currently unavailable.")
+                            st.error(f"AI Service Note: {str(e)}")
+                            st.info("Product data verified. AI summary currently unavailable.")
                 else:
                     st.error("No items found meeting elite criteria (4.5+ stars, 1,000+ reviews).")
             else:
