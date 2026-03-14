@@ -7,7 +7,7 @@ SERPAPI_KEY = st.secrets["SERPAPI_KEY"]
 GEMINI_KEY = st.secrets["GEMINI_KEY"]
 
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-3.1-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 def search_amazon(query):
     params = {
